@@ -955,6 +955,82 @@ func TestAccStorageAccount_azureFilesAuthentication(t *testing.T) {
 	})
 }
 
+func TestAccStorageAccount_smbOAuth(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_storage_account", "test")
+	r := StorageAccountResource{}
+
+	data.ResourceTest(t, r, []acceptance.TestStep{
+		{
+			Config: r.smbOAuth(data, false),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("smb_oauth_enabled").HasValue("false"),
+			),
+		},
+		data.ImportStep(),
+		{
+			Config: r.smbOAuth(data, true),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("smb_oauth_enabled").HasValue("true"),
+			),
+		},
+		data.ImportStep(),
+		{
+			Config: r.smbOAuth(data, false),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("smb_oauth_enabled").HasValue("false"),
+			),
+		},
+		data.ImportStep(),
+	})
+}
+
+func TestAccStorageAccount_smbOAuthWithAzureFilesAuthentication(t *testing.T) {
+	data := acceptance.BuildTestData(t, "azurerm_storage_account", "test")
+	r := StorageAccountResource{}
+
+	data.ResourceTest(t, r, []acceptance.TestStep{
+		{
+			Config: r.smbOAuthWithAzureFilesAuthentication(data, true, true),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("smb_oauth_enabled").HasValue("true"),
+				check.That(data.ResourceName).Key("azure_files_authentication.0.directory_type").HasValue("AADKERB"),
+			),
+		},
+		data.ImportStep(),
+		{
+			Config: r.smbOAuthWithAzureFilesAuthentication(data, true, false),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("smb_oauth_enabled").HasValue("false"),
+				check.That(data.ResourceName).Key("azure_files_authentication.0.directory_type").HasValue("AADKERB"),
+			),
+		},
+		data.ImportStep(),
+		{
+			Config: r.smbOAuthWithAzureFilesAuthentication(data, true, true),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("smb_oauth_enabled").HasValue("true"),
+				check.That(data.ResourceName).Key("azure_files_authentication.0.directory_type").HasValue("AADKERB"),
+			),
+		},
+		data.ImportStep(),
+		{
+			Config: r.smbOAuthWithAzureFilesAuthentication(data, false, true),
+			Check: acceptance.ComposeTestCheckFunc(
+				check.That(data.ResourceName).ExistsInAzure(r),
+				check.That(data.ResourceName).Key("smb_oauth_enabled").HasValue("true"),
+				check.That(data.ResourceName).Key("azure_files_authentication.#").HasValue("0"),
+			),
+		},
+		data.ImportStep(),
+	})
+}
+
 func TestAccStorageAccount_routing(t *testing.T) {
 	data := acceptance.BuildTestData(t, "azurerm_storage_account", "test")
 	r := StorageAccountResource{}
@@ -1832,6 +1908,65 @@ resource "azurerm_storage_account" "test" {
   }
 }
 `, data.RandomInteger, data.Locations.Primary, data.RandomString)
+}
+
+func (r StorageAccountResource) smbOAuth(data acceptance.TestData, enabled bool) string {
+	return fmt.Sprintf(`
+provider "azurerm" {
+  features {}
+}
+
+resource "azurerm_resource_group" "test" {
+  name     = "acctestRG-storage-%d"
+  location = "%s"
+}
+
+resource "azurerm_storage_account" "test" {
+  name                = "unlikely23exst2acct%s"
+  resource_group_name = azurerm_resource_group.test.name
+
+  location                 = azurerm_resource_group.test.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+
+  smb_oauth_enabled = %t
+}
+`, data.RandomInteger, data.Locations.Primary, data.RandomString, enabled)
+}
+
+func (r StorageAccountResource) smbOAuthWithAzureFilesAuthentication(data acceptance.TestData, azureFilesAuthentication, smbOAuthEnabled bool) string {
+	afa := ""
+	if azureFilesAuthentication {
+		afa = `
+  azure_files_authentication {
+    directory_type                 = "AADKERB"
+    default_share_level_permission = "StorageFileDataSmbShareReader"
+  }
+`
+	}
+
+	return fmt.Sprintf(`
+provider "azurerm" {
+  features {}
+}
+
+resource "azurerm_resource_group" "test" {
+  name     = "acctestRG-storage-%d"
+  location = "%s"
+}
+
+resource "azurerm_storage_account" "test" {
+  name                = "unlikely23exst2acct%s"
+  resource_group_name = azurerm_resource_group.test.name
+
+  location                 = azurerm_resource_group.test.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+
+  smb_oauth_enabled = %t
+%s
+}
+`, data.RandomInteger, data.Locations.Primary, data.RandomString, smbOAuthEnabled, afa)
 }
 
 func (r StorageAccountResource) publicNetworkAccess(data acceptance.TestData, v string) string {
